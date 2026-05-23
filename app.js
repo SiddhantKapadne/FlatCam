@@ -19,6 +19,8 @@ let scanIndex = 0;
 let animId = 0;
 let stream = null;
 let uploadedImage = null;
+let uploadSourceW = 0;
+let uploadSourceH = 0;
 let useCamera = true;
 let facingMode = 'environment';
 let W = 0;
@@ -30,53 +32,113 @@ frameCtx.imageSmoothingEnabled = false;
 
 let statusTimer;
 
+function hapticLight() {
+  if (navigator.vibrate) navigator.vibrate(10);
+}
+
+function pressAnimation(el) {
+  if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  el.classList.add('is-pressed');
+  setTimeout(() => el.classList.remove('is-pressed'), 140);
+}
+
+function bindPressFeedback(...elements) {
+  for (const el of elements) {
+    if (!el) continue;
+    el.addEventListener('pointerdown', () => pressAnimation(el));
+  }
+}
+
 function setDownloadVisible(visible) {
   if (!downloadBtn) return;
   downloadBtn.hidden = !visible;
   downloadBtn.disabled = !visible;
+  downloadBtn.setAttribute('aria-hidden', String(!visible));
+  if (visible) {
+    requestAnimationFrame(() => downloadBtn.classList.add('is-ready'));
+  } else {
+    downloadBtn.classList.remove('is-ready');
+  }
 }
 
-/** Save exactly what is on screen — no re-render, so the file matches the preview. */
-function saveSnapshotToStorage() {
-  if (!canvas.width || !canvas.height) {
-    setStatus('Nothing to save yet', true);
+function blobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.download = filename;
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function canvasToPngBlob(sourceCanvas) {
+  return new Promise((resolve) => {
+    sourceCanvas.toBlob((blob) => resolve(blob), 'image/png', 1);
+  });
+}
+
+/** Export upload at original pixel dimensions (same as uploaded file). */
+function renderUploadAtSourceSize() {
+  const w = uploadSourceW;
+  const h = uploadSourceH;
+  const sourceFrame = document.createElement('canvas');
+  sourceFrame.width = w;
+  sourceFrame.height = h;
+  const sfCtx = sourceFrame.getContext('2d');
+  sfCtx.imageSmoothingEnabled = false;
+  sfCtx.drawImage(uploadedImage, 0, 0, w, h);
+
+  const exportLayout = getColumnLayout(w);
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const outCtx = out.getContext('2d');
+  outCtx.imageSmoothingEnabled = false;
+  drawStaticSlitScan(outCtx, sourceFrame, w, h, exportLayout);
+  return out;
+}
+
+async function saveSnapshotToStorage() {
+  if (uploadedImage && !useCamera && uploadSourceW > 0 && uploadSourceH > 0) {
+    const exportCanvas = renderUploadAtSourceSize();
+    const blob = await canvasToPngBlob(exportCanvas);
+    if (!blob) {
+      setStatus('Could not save', 'error');
+      return;
+    }
+    blobDownload(blob, `flatcam-${Date.now()}.png`);
+    setStatus(`Saved ${uploadSourceW}×${uploadSourceH}`, 'success');
     return;
   }
 
-  canvas.toBlob(
-    (blob) => {
-      if (!blob) {
-        setStatus('Could not save snapshot', true);
-        return;
-      }
-      const filename = `flatcam-${Date.now()}.png`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.download = filename;
-      a.href = url;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 500);
-      setStatus('Snapshot saved');
-    },
-    'image/png',
-    1
-  );
+  if (!canvas.width || !canvas.height) {
+    setStatus('Nothing to save yet', 'error');
+    return;
+  }
+
+  const blob = await canvasToPngBlob(canvas);
+  if (!blob) {
+    setStatus('Could not save snapshot', 'error');
+    return;
+  }
+  blobDownload(blob, `flatcam-${Date.now()}.png`);
+  setStatus('Snapshot saved', 'success');
 }
 
 function downloadCapture() {
   saveSnapshotToStorage();
 }
 
-function setStatus(msg, isErr = false) {
+function setStatus(msg, type = 'default') {
   if (!statusEl) return;
   clearTimeout(statusTimer);
   statusEl.textContent = msg;
-  statusEl.className = `status show${isErr ? ' err' : ''}`;
+  const tone = type === 'error' ? ' err' : type === 'success' ? ' ok' : '';
+  statusEl.className = `status show${tone}`;
   statusTimer = setTimeout(() => {
     statusEl.className = 'status';
-  }, isErr ? 5000 : 2500);
+  }, type === 'error' ? 5000 : 2500);
 }
 
 function getRenderSize() {
@@ -102,7 +164,7 @@ function getColumnLayout(width) {
   return { widths, xs };
 }
 
-function setSize(w, h) {
+function setDisplaySize(w, h) {
   W = w;
   H = h;
   layout = getColumnLayout(W);
@@ -121,12 +183,11 @@ function resetColumns() {
 function syncCanvasToViewport() {
   const { w, h } = getRenderSize();
   if (w !== W || h !== H) {
-    setSize(w, h);
+    setDisplaySize(w, h);
     if (useCamera && stream) resetColumns();
   }
 }
 
-/** Camera: fill view (cover). Upload: original aspect ratio (contain). */
 function drawSourceToFrame() {
   frameCtx.fillStyle = '#000';
   frameCtx.fillRect(0, 0, W, H);
@@ -139,9 +200,7 @@ function drawSourceToFrame() {
     const scale = Math.max(W / vw, H / vh);
     const dw = vw * scale;
     const dh = vh * scale;
-    const dx = (W - dw) / 2;
-    const dy = (H - dh) / 2;
-    frameCtx.drawImage(video, dx, dy, dw, dh);
+    frameCtx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
     return true;
   }
 
@@ -151,15 +210,43 @@ function drawSourceToFrame() {
   const scale = Math.min(W / iw, H / ih, 1);
   const dw = iw * scale;
   const dh = ih * scale;
-  const dx = (W - dw) / 2;
-  const dy = (H - dh) / 2;
-  frameCtx.drawImage(uploadedImage, dx, dy, dw, dh);
+  frameCtx.drawImage(uploadedImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
   return true;
 }
 
-function sampleX(colIndex) {
-  const { xs, widths } = layout;
-  return Math.max(0, Math.min(W - SLIT_W, Math.floor(xs[colIndex] + widths[colIndex] / 2)));
+function sampleX(colIndex, colLayout, width) {
+  const { xs, widths } = colLayout;
+  return Math.max(0, Math.min(width - SLIT_W, Math.floor(xs[colIndex] + widths[colIndex] / 2)));
+}
+
+function captureStrip(colIndex, sourceFrame, colLayout, height, width) {
+  const buf = document.createElement('canvas');
+  buf.width = SLIT_W;
+  buf.height = height;
+  const b = buf.getContext('2d');
+  b.imageSmoothingEnabled = false;
+  const x = sampleX(colIndex, colLayout, width);
+  b.drawImage(sourceFrame, x, 0, SLIT_W, height, 0, 0, SLIT_W, height);
+  return buf;
+}
+
+function drawStaticSlitScan(targetCtx, sourceFrame, width, height, colLayout) {
+  targetCtx.fillStyle = '#000';
+  targetCtx.fillRect(0, 0, width, height);
+  for (let c = 0; c < COLS; c++) {
+    const strip = captureStrip(c, sourceFrame, colLayout, height, width);
+    targetCtx.drawImage(
+      strip,
+      0,
+      0,
+      SLIT_W,
+      height,
+      colLayout.xs[c],
+      0,
+      colLayout.widths[c],
+      height
+    );
+  }
 }
 
 function drawColumn(colIndex, strip) {
@@ -167,26 +254,19 @@ function drawColumn(colIndex, strip) {
   ctx.drawImage(strip, 0, 0, strip.width, H, xs[colIndex], 0, widths[colIndex], H);
 }
 
-function captureStrip(colIndex) {
-  const buf = document.createElement('canvas');
-  buf.width = SLIT_W;
-  buf.height = H;
-  const b = buf.getContext('2d');
-  b.imageSmoothingEnabled = false;
-  b.drawImage(frame, sampleX(colIndex), 0, SLIT_W, H, 0, 0, SLIT_W, H);
-  return buf;
-}
-
-function drawStaticSlitScan() {
+function drawDisplayStaticSlitScan() {
   for (let c = 0; c < COLS; c++) {
-    drawColumn(c, captureStrip(c));
+    const strip = captureStrip(c, frame, layout, H, W);
+    drawColumn(c, strip);
   }
 }
 
 function drawTimeSlitScan() {
-  columnBuffers[scanIndex] = captureStrip(scanIndex);
+  columnBuffers[scanIndex] = captureStrip(scanIndex, frame, layout, H, W);
   scanIndex = (scanIndex + 1) % COLS;
 
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
   for (let c = 0; c < COLS; c++) {
     if (columnBuffers[c]) drawColumn(c, columnBuffers[c]);
   }
@@ -198,11 +278,13 @@ function render() {
     return;
   }
 
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
-
-  if (useCamera) drawTimeSlitScan();
-  else drawStaticSlitScan();
+  if (useCamera) {
+    drawTimeSlitScan();
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    drawDisplayStaticSlitScan();
+  }
 
   animId = requestAnimationFrame(render);
 }
@@ -251,6 +333,8 @@ async function startCamera() {
 
   useCamera = true;
   uploadedImage = null;
+  uploadSourceW = 0;
+  uploadSourceH = 0;
   setDownloadVisible(false);
   syncCanvasToViewport();
   resetColumns();
@@ -263,6 +347,8 @@ function useUploadedImage(img) {
     stream = null;
   }
   uploadedImage = img;
+  uploadSourceW = img.naturalWidth;
+  uploadSourceH = img.naturalHeight;
   useCamera = false;
   setDownloadVisible(false);
   syncCanvasToViewport();
@@ -271,7 +357,7 @@ function useUploadedImage(img) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       setDownloadVisible(true);
-      setStatus('Ready — tap Download');
+      setStatus(`Ready — ${uploadSourceW}×${uploadSourceH}`);
     });
   });
 }
@@ -279,6 +365,7 @@ function useUploadedImage(img) {
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
+  hapticLight();
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -290,6 +377,7 @@ fileInput.addEventListener('change', (e) => {
 });
 
 cameraBtn.addEventListener('click', () => {
+  hapticLight();
   if (useCamera && stream) {
     saveSnapshotToStorage();
     return;
@@ -297,28 +385,30 @@ cameraBtn.addEventListener('click', () => {
   if (uploadedImage && !useCamera) {
     startCamera()
       .then(() => setStatus('Camera on — tap capture to save'))
-      .catch((err) => setStatus(err.message, true));
+      .catch((err) => setStatus(err.message, 'error'));
     return;
   }
-  startCamera().catch((err) => setStatus(err.message, true));
+  startCamera().catch((err) => setStatus(err.message, 'error'));
 });
 
 flipBtn.addEventListener('click', () => {
+  hapticLight();
   facingMode = facingMode === 'environment' ? 'user' : 'environment';
-  startCamera().catch((err) => setStatus(err.message, true));
+  startCamera().catch((err) => setStatus(err.message, 'error'));
 });
 
 downloadBtn.addEventListener('click', () => {
   if (downloadBtn.hidden || !uploadedImage) return;
+  hapticLight();
   saveSnapshotToStorage();
 });
+
+bindPressFeedback(cameraBtn, flipBtn, downloadBtn, document.querySelector('.btn-upload'));
 
 let resizeTimer;
 function onResize() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    syncCanvasToViewport();
-  }, 150);
+  resizeTimer = setTimeout(syncCanvasToViewport, 150);
 }
 
 window.addEventListener('resize', onResize);
@@ -334,5 +424,5 @@ setDownloadVisible(false);
 syncCanvasToViewport();
 startCamera().catch(() => {
   useCamera = false;
-  setStatus('Allow camera or tap Upload', true);
+  setStatus('Allow camera or tap Upload', 'error');
 });
