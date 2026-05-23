@@ -64,13 +64,25 @@
     .controls {
       flex-shrink: 0;
       display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 1.75rem;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1rem;
       padding: 1.25rem 1.5rem;
       padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
       width: 100%;
       max-width: 420px;
+    }
+    .controls-left {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+    .controls-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
     }
     .btn {
       width: 56px;
@@ -123,15 +135,25 @@
     }
     .btn-flip svg { width: 22px; height: 22px; display: block; }
     .btn-flip:active { opacity: 0.55; }
-    .camera-stack {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.4rem;
-    }
     @media (max-width: 639px) {
-      .camera-stack .btn-flip { display: inline-flex; }
-      .controls { gap: 1.1rem; }
+      .controls {
+        max-width: 100%;
+        padding-left: max(1.25rem, env(safe-area-inset-left));
+        padding-right: max(1.25rem, env(safe-area-inset-right));
+      }
+      .controls-right .btn-flip { display: inline-flex; }
+    }
+    @media (min-width: 640px) {
+      .controls {
+        justify-content: center;
+        gap: 1.75rem;
+      }
+      .controls-left { gap: 12px; }
+      .controls-right {
+        flex-direction: row;
+        gap: 1.75rem;
+      }
+      .controls-right .btn-flip { display: none; }
     }
     .status {
       position: absolute;
@@ -161,15 +183,24 @@
     </div>
     <video id="cam" autoplay playsinline muted webkit-playsinline></video>
     <nav class="controls" aria-label="Controls">
-      <label class="btn btn-upload" for="file" aria-label="Upload">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 14V4"/>
-          <path d="M8 8l4-4 4 4"/>
-          <path d="M5 20h14"/>
-        </svg>
-      </label>
+      <div class="controls-left">
+        <label class="btn btn-upload" for="file" aria-label="Upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 14V4"/>
+            <path d="M8 8l4-4 4 4"/>
+            <path d="M5 20h14"/>
+          </svg>
+        </label>
+        <button type="button" class="btn btn-download" id="downloadBtn" aria-label="Download" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 10v10"/>
+            <path d="M8 16l4 4 4-4"/>
+            <path d="M5 4h14"/>
+          </svg>
+        </button>
+      </div>
       <input type="file" id="file" accept="image/*" />
-      <div class="camera-stack">
+      <div class="controls-right">
         <button type="button" class="btn-flip" id="flipBtn" aria-label="Flip camera">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7h13a4 4 0 0 1 0 8H7"/>
@@ -184,13 +215,6 @@
           </svg>
         </button>
       </div>
-      <button type="button" class="btn btn-download" id="downloadBtn" aria-label="Download" hidden>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 10v10"/>
-          <path d="M8 16l4 4 4-4"/>
-          <path d="M5 4h14"/>
-        </svg>
-      </button>
     </nav>
   </div>
   <script src="app.js"></script>

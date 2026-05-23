@@ -36,13 +36,37 @@ function setDownloadVisible(visible) {
   downloadBtn.disabled = !visible;
 }
 
+/** Save exactly what is on screen — no re-render, so the file matches the preview. */
+function saveSnapshotToStorage() {
+  if (!canvas.width || !canvas.height) {
+    setStatus('Nothing to save yet', true);
+    return;
+  }
+
+  canvas.toBlob(
+    (blob) => {
+      if (!blob) {
+        setStatus('Could not save snapshot', true);
+        return;
+      }
+      const filename = `flatcam-${Date.now()}.png`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.download = filename;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+      setStatus('Snapshot saved');
+    },
+    'image/png',
+    1
+  );
+}
+
 function downloadCapture() {
-  const a = document.createElement('a');
-  a.download = `flatcam-${Date.now()}.png`;
-  a.href = canvas.toDataURL('image/png');
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  saveSnapshotToStorage();
 }
 
 function setStatus(msg, isErr = false) {
@@ -266,6 +290,16 @@ fileInput.addEventListener('change', (e) => {
 });
 
 cameraBtn.addEventListener('click', () => {
+  if (useCamera && stream) {
+    saveSnapshotToStorage();
+    return;
+  }
+  if (uploadedImage && !useCamera) {
+    startCamera()
+      .then(() => setStatus('Camera on — tap capture to save'))
+      .catch((err) => setStatus(err.message, true));
+    return;
+  }
   startCamera().catch((err) => setStatus(err.message, true));
 });
 
@@ -276,8 +310,7 @@ flipBtn.addEventListener('click', () => {
 
 downloadBtn.addEventListener('click', () => {
   if (downloadBtn.hidden || !uploadedImage) return;
-  downloadCapture();
-  setStatus('Saved');
+  saveSnapshotToStorage();
 });
 
 let resizeTimer;
