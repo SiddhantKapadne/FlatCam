@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>CameraVibe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .app {
+      width: 100%;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #000;
+    }
+    .view-wrap {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(0.5rem, env(safe-area-inset-top)) 0 0;
+    }
+    .view {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    /* Desktop / tablet: phone aspect ratio, centered */
+    @media (min-width: 640px) {
+      html, body, .app, .view-wrap {
+        background: #e2e2e5;
+      }
+      .view {
+        width: auto;
+        height: 100%;
+        max-height: calc(100dvh - 7rem);
+        aspect-ratio: 9 / 16;
+        max-width: min(420px, 100vw - 2rem);
+      }
+    }
+    #out {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    video, #file { display: none; }
+    .controls {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1.75rem;
+      padding: 1.25rem 1.5rem;
+      padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+      width: 100%;
+      max-width: 420px;
+    }
+    .btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px solid;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      padding: 0;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+    .btn:active { transform: scale(0.94); opacity: 0.85; }
+    .btn svg { width: 26px; height: 26px; display: block; }
+    .btn-upload {
+      background: #e0e7ff;
+      border-color: #2563eb;
+      color: #2563eb;
+    }
+    .btn-camera {
+      background: #fef3c7;
+      border-color: #f59e0b;
+      color: #f59e0b;
+    }
+    .btn-download {
+      background: #dcfce7;
+      border-color: #10b981;
+      color: #10b981;
+    }
+    .btn-flip {
+      display: none;
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: #fff;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .btn-flip svg { width: 22px; height: 22px; display: block; }
+    .btn-flip:active { opacity: 0.55; }
+    .camera-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    @media (max-width: 639px) {
+      .camera-stack .btn-flip { display: inline-flex; }
+      .controls { gap: 1.1rem; }
+    }
+    .status {
+      position: absolute;
+      top: max(0.5rem, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.75);
+      text-align: center;
+      max-width: 90%;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .status.show { opacity: 1; }
+    .status.err { color: #f88; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="view-wrap">
+      <div class="view" id="view">
+        <canvas id="out"></canvas>
+        <p class="status" id="status"></p>
+      </div>
+    </div>
+    <video id="cam" autoplay playsinline muted webkit-playsinline></video>
+    <nav class="controls" aria-label="Controls">
+      <label class="btn btn-upload" for="file" aria-label="Upload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 14V4"/>
+          <path d="M8 8l4-4 4 4"/>
+          <path d="M5 20h14"/>
+        </svg>
+      </label>
+      <input type="file" id="file" accept="image/*" />
+      <div class="camera-stack">
+        <button type="button" class="btn-flip" id="flipBtn" aria-label="Flip camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7h13a4 4 0 0 1 0 8H7"/>
+            <path d="M7 11L3 7l4-4"/>
+            <path d="M21 17H8a4 4 0 0 1 0-8h9"/>
+            <path d="M17 13l4 4-4 4"/>
+          </svg>
+        </button>
+        <button type="button" class="btn btn-camera" id="cameraBtn" aria-label="Camera">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M9 7h1.5l1-1.5h3L15.5 7H17a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm3 10.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9z"/>
+          </svg>
+        </button>
+      </div>
+      <button type="button" class="btn btn-download" id="downloadBtn" aria-label="Download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 10v10"/>
+          <path d="M8 16l4 4 4-4"/>
+          <path d="M5 4h14"/>
+        </svg>
+      </button>
+    </nav>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
