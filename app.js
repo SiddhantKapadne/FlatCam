@@ -29,6 +29,22 @@ ctx.imageSmoothingEnabled = false;
 frameCtx.imageSmoothingEnabled = false;
 
 let statusTimer;
+
+function setDownloadVisible(visible) {
+  if (!downloadBtn) return;
+  downloadBtn.hidden = !visible;
+  downloadBtn.disabled = !visible;
+}
+
+function downloadCapture() {
+  const a = document.createElement('a');
+  a.download = `flatcam-${Date.now()}.png`;
+  a.href = canvas.toDataURL('image/png');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function setStatus(msg, isErr = false) {
   if (!statusEl) return;
   clearTimeout(statusTimer);
@@ -211,6 +227,7 @@ async function startCamera() {
 
   useCamera = true;
   uploadedImage = null;
+  setDownloadVisible(false);
   syncCanvasToViewport();
   resetColumns();
   startRender();
@@ -223,10 +240,16 @@ function useUploadedImage(img) {
   }
   uploadedImage = img;
   useCamera = false;
+  setDownloadVisible(false);
   syncCanvasToViewport();
   resetColumns();
   startRender();
-  setStatus('Image loaded');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setDownloadVisible(true);
+      setStatus('Ready — tap Download');
+    });
+  });
 }
 
 fileInput.addEventListener('change', (e) => {
@@ -252,12 +275,8 @@ flipBtn.addEventListener('click', () => {
 });
 
 downloadBtn.addEventListener('click', () => {
-  const a = document.createElement('a');
-  a.download = `camera-vibe-${Date.now()}.png`;
-  a.href = canvas.toDataURL('image/png');
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  if (downloadBtn.hidden || !uploadedImage) return;
+  downloadCapture();
   setStatus('Saved');
 });
 
@@ -278,6 +297,7 @@ document.addEventListener('visibilitychange', () => {
   else if (uploadedImage) startRender();
 });
 
+setDownloadVisible(false);
 syncCanvasToViewport();
 startCamera().catch(() => {
   useCamera = false;

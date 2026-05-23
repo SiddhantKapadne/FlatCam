@@ -103,6 +103,9 @@
       border-color: #10b981;
       color: #10b981;
     }
+    .btn-download[hidden] {
+      display: none;
+    }
     .btn-flip {
       display: none;
       width: 36px;
@@ -181,7 +184,7 @@
           </svg>
         </button>
       </div>
-      <button type="button" class="btn btn-download" id="downloadBtn" aria-label="Download">
+      <button type="button" class="btn btn-download" id="downloadBtn" aria-label="Download" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 10v10"/>
           <path d="M8 16l4 4 4-4"/>
